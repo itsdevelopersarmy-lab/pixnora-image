@@ -42,7 +42,7 @@ function generateEncryptedKey() {
   return `ak_${ak}${hash}`;
 }
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/pixnora';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://itsnexverra_db_user:kUhTkKBwsN2EEeoo@cluster0.iaz9eus.mongodb.net/?appName=Cluster0';
 const SESSION_SECRET = crypto.randomBytes(32).toString('hex');
 
 // --- MongoDB Schemas ---
