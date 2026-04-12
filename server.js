@@ -133,7 +133,8 @@ async function startServer() {
   }
 
   const app = express();
-  const PORT = 10000;
+  app.set('trust proxy', 1);
+  const PORT = 3000;
 
   app.use(cors());
   app.use(express.json());
@@ -238,14 +239,17 @@ async function startServer() {
   // Middleware to verify Session
   const authenticateToken = (req, res, next) => {
     if (!req.session.user) {
+      console.log(`[Auth] Unauthorized access attempt to ${req.url}`);
       return res.status(401).json({ error: 'Unauthorized' });
     }
     req.user = req.session.user;
+    console.log(`[Auth] Authenticated user: ${req.user.email} (${req.user.role})`);
     next();
   };
   
   const isAdmin = (req, res, next) => {
     if (req.user?.role !== 'admin') {
+      console.log(`[Auth] Forbidden: Admin access required for ${req.url}. User role: ${req.user?.role}`);
       return res.status(403).json({ error: 'Admin access required' });
     }
     next();
@@ -518,19 +522,23 @@ async function startServer() {
   });
 
   apiRouter.post('/keys/generate', authenticateToken, async (req, res) => {
+    console.log(`[API Keys] Generating key for user: ${req.user.id}`);
     try {
       const { name, baseKey, deactivateOthers } = req.body;
+      console.log(`[API Keys] Params: name=${name}, baseKey=${baseKey}, deactivateOthers=${deactivateOthers}`);
       
       if (deactivateOthers) {
-        await ApiKey.updateMany({ user_id: req.user.id, revoked: false }, { revoked: true });
+        const updateResult = await ApiKey.updateMany({ user_id: req.user.id, revoked: false }, { revoked: true });
+        console.log(`[API Keys] Deactivated ${updateResult.modifiedCount} keys`);
       }
 
       const key = generateEncryptedKey(baseKey || ak);
       const newKey = await ApiKey.create({ user_id: req.user.id, key, name: name || 'Default Key' });
+      console.log(`[API Keys] Created key: ${newKey._id}`);
       res.json({ key, id: newKey._id.toString() });
     } catch (error) {
       console.error('[API Keys] Generate Error:', error);
-      res.status(500).json({ error: 'Failed to generate key' });
+      res.status(500).json({ error: 'Failed to generate key', details: error.message });
     }
   });
 
@@ -569,6 +577,7 @@ async function startServer() {
 
   // Endpoint Cloning
   apiRouter.post('/endpoints/clone', authenticateToken, isAdmin, async (req, res) => {
+    console.log(`[Endpoints] Cloning for user: ${req.user.id}`);
     let { originalUrl } = req.body;
     if (!originalUrl) return res.status(400).json({ error: 'Original URL is required' });
     
@@ -587,8 +596,10 @@ async function startServer() {
     }
     
     try {
+      console.log(`[Endpoints] Creating endpoint with path: ${clonedPath}`);
       await ClonedEndpoint.create({ user_id: req.user.id, original_url: originalUrl, cloned_path: clonedPath });
     } catch (err) {
+      console.warn(`[Endpoints] Path conflict or error, retrying with suffix: ${err.message}`);
       clonedPath = `${clonedPath}-${uuidv4().split('-')[0]}`;
       await ClonedEndpoint.create({ user_id: req.user.id, original_url: originalUrl, cloned_path: clonedPath });
     }
@@ -597,6 +608,7 @@ async function startServer() {
     const host = req.get('host');
     const baseUrl = process.env.APP_URL || `${protocol}://${host}`;
     const finalClonedUrl = `${baseUrl}/pixnora/${clonedPath}`;
+    console.log(`[Endpoints] Cloned URL generated: ${finalClonedUrl}`);
     res.json({ clonedUrl: finalClonedUrl });
   });
 
