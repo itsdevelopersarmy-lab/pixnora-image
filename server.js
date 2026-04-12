@@ -33,13 +33,13 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-function generateEncryptedKey() {
+function generateEncryptedKey(base = ak) {
   const salt = uuidv4().replace(/-/g, '').substring(0, 12);
-  const hash = crypto.createHmac('sha256', ak)
+  const hash = crypto.createHmac('sha256', base)
     .update(salt)
     .digest('hex')
     .substring(0, 24);
-  return `ak_${ak}${hash}`;
+  return `ak_${base}${hash}`;
 }
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://itsnexverra_db_user:kUhTkKBwsN2EEeoo@cluster0.iaz9eus.mongodb.net/?appName=Cluster0';
@@ -519,8 +519,14 @@ async function startServer() {
 
   apiRouter.post('/keys/generate', authenticateToken, async (req, res) => {
     try {
-      const key = generateEncryptedKey();
-      const newKey = await ApiKey.create({ user_id: req.user.id, key, name: req.body.name || 'Default Key' });
+      const { name, baseKey, deactivateOthers } = req.body;
+      
+      if (deactivateOthers) {
+        await ApiKey.updateMany({ user_id: req.user.id, revoked: false }, { revoked: true });
+      }
+
+      const key = generateEncryptedKey(baseKey || ak);
+      const newKey = await ApiKey.create({ user_id: req.user.id, key, name: name || 'Default Key' });
       res.json({ key, id: newKey._id.toString() });
     } catch (error) {
       console.error('[API Keys] Generate Error:', error);
@@ -587,7 +593,10 @@ async function startServer() {
       await ClonedEndpoint.create({ user_id: req.user.id, original_url: originalUrl, cloned_path: clonedPath });
     }
     
-    const finalClonedUrl = `${process.env.APP_URL || 'http://localhost:3000'}/pixnora/${clonedPath}`;
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const baseUrl = process.env.APP_URL || `${protocol}://${host}`;
+    const finalClonedUrl = `${baseUrl}/pixnora/${clonedPath}`;
     res.json({ clonedUrl: finalClonedUrl });
   });
 
