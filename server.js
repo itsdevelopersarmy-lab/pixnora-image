@@ -31,6 +31,20 @@ async function startServer() {
   const usersColl = db.collection("users");
   const sessionsColl = db.collection("sessions");
   const nodesColl = db.collection("nodes");
+  const settingsColl = db.collection("settings");
+
+  // Bootstrap initial settings if empty
+  const initialSettingsCount = await settingsColl.countDocuments();
+  if (initialSettingsCount === 0) {
+    const defaultSettings = {
+      offerPrice: 20000,
+      originalPrice: 45000,
+      countdownDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days from now
+      isOfferActive: true
+    };
+    await settingsColl.insertOne(defaultSettings);
+    console.log("Bootstrapped initial settings");
+  }
 
   // Bootstrap initial nodes if empty
   const initialNodesCount = await nodesColl.countDocuments();
@@ -337,6 +351,19 @@ async function startServer() {
     if (nodes && nodes.length > 0) {
       await nodesColl.insertMany(nodes.map(({ _id, ...rest }) => rest));
     }
+    res.json({ success: true });
+  });
+
+  // Settings Routes
+  app.get("/api/settings", async (req, res) => {
+    const settings = await settingsColl.findOne({});
+    res.json(settings);
+  });
+
+  app.post("/api/settings", async (req, res) => {
+    const settings = req.body;
+    const { _id, ...rest } = settings;
+    await settingsColl.updateOne({}, { $set: rest }, { upsert: true });
     res.json({ success: true });
   });
 
